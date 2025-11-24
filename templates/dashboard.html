@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Order Processing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>📊 Kafka Order Processing Dashboard</h1>
+                <div class="header-status">
+                    <span id="status-indicator" class="status-badge status-disconnected">
+                        <span class="status-dot"></span>
+                        <span id="status-text">Disconnected</span>
+                    </span>
+                    <span id="last-update" class="last-update">Last update: Never</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Stats Row -->
+            <section class="stats-grid">
+                <div class="stat-card stat-primary">
+                    <div class="stat-icon">📦</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Total Orders</div>
+                        <div class="stat-value" id="total-orders">0</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-success">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Total Revenue</div>
+                        <div class="stat-value" id="total-revenue">$0.00</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-info-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Average Price</div>
+                        <div class="stat-value" id="avg-price">$0.00</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-warning">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Error Rate</div>
+                        <div class="stat-value" id="error-rate">0%</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-danger">
+                    <div class="stat-icon">💀</div>
+                    <div class="stat-info">
+                        <div class="stat-label">DLQ Messages</div>
+                        <div class="stat-value" id="dlq-count">0</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-secondary">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Processing Rate</div>
+                        <div class="stat-value" id="processing-rate">0/min</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Row -->
+            <section class="charts-grid">
+                <!-- Product Distribution Chart -->
+                <div class="chart-container chart-box">
+                    <h3>📊 Orders by Product</h3>
+                    <canvas id="productChart"></canvas>
+                </div>
+
+                <!-- Real-time Metrics -->
+                <div class="chart-container chart-box">
+                    <h3>📱 Real-time Metrics</h3>
+                    <div class="metrics-table">
+                        <div class="metric-row">
+                            <span class="metric-label">Total Processed:</span>
+                            <span class="metric-value" id="processed-count">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Failed Orders:</span>
+                            <span class="metric-value failed" id="failed-count">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">DLQ Messages:</span>
+                            <span class="metric-value danger" id="dlq-live-count">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Status:</span>
+                            <span class="metric-value" id="kafka-status">Disconnected</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Orders Table -->
+            <section class="table-section">
+                <h3>📋 Recent Orders (Last 20)</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-tbody">
+                            <tr>
+                                <td colspan="4" class="empty-state">No orders yet...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- DLQ Messages Table -->
+            <section class="table-section">
+                <h3>💀 Dead Letter Queue (DLQ) - Failed Messages</h3>
+                <div class="table-container">
+                    <table class="data-table dlq-table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Timestamp</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dlq-tbody">
+                            <tr>
+                                <td colspan="5" class="empty-state">No failed orders yet...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>Kafka Avro Assignment - Real-time Order Processing System</p>
+                <p>© 2025 Big Data Assignment - 8th Semester</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

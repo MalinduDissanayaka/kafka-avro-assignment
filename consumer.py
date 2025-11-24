@@ -58,9 +58,6 @@ class OrderConsumer:
         self.total_price = 0.0
         self.order_count = 0
         self.running_average = 0.0
-        
-        # Retry tracking
-        self.retry_counts = {}
     
     def calculate_running_average(self, price):
         """Update running average with new price"""
@@ -89,16 +86,32 @@ class OrderConsumer:
                 serialization_context
             )
             
+            # Define callback for delivery confirmation
+            def delivery_callback(err, msg):
+                if err:
+                    print(f"❌ Failed to deliver DLQ message for Order #{order['orderId']}: {err}")
+                else:
+                    print(f"✅ DLQ message delivered - Order ID: {order['orderId']}, "
+                          f"Topic: {msg.topic()}, Partition: {msg.partition()}, Offset: {msg.offset()}")
+            
             self.dlq_producer.produce(
                 topic=config.DLQ_TOPIC,
-                value=serialized_order
+                value=serialized_order,
+                callback=delivery_callback,
+                partition=0  # Force to partition 0 for consistency
             )
-            self.dlq_producer.flush()
             
-            print(f"💀 Sent to DLQ - Order ID: {order['orderId']}, Reason: {error_message}")
+            # Flush with longer timeout
+            remaining = self.dlq_producer.flush(timeout=10)
+            if remaining > 0:
+                print(f"⚠️  Warning: {remaining} messages still in DLQ producer queue after flush")
+            
+            print(f"💀 Order #{order['orderId']} queued for DLQ - Reason: {error_message}")
             
         except Exception as e:
             print(f"❌ Failed to send to DLQ: {e}")
+            import traceback
+            traceback.print_exc()
     
     def process_order(self, order, retry_attempt=0):
         """
@@ -154,41 +167,34 @@ class OrderConsumer:
                     )
                     
                     order_id = order['orderId']
-                    retry_count = self.retry_counts.get(order_id, 0)
                     
-                    # Try to process the order
-                    try:
-                        self.process_order(order, retry_count)
-                        
-                        # Success - commit offset and clear retry count
-                        self.consumer.commit(msg)
-                        if order_id in self.retry_counts:
-                            del self.retry_counts[order_id]
-                    
-                    except Exception as e:
-                        print(f"⚠️  Processing failed for Order #{order_id}: {e}")
-                        
-                        if retry_count < config.MAX_RETRIES:
-                            # Retry logic
-                            self.retry_counts[order_id] = retry_count + 1
-                            print(f"🔄 Retry {retry_count + 1}/{config.MAX_RETRIES} for Order #{order_id}")
-                            time.sleep(config.RETRY_DELAY_SECONDS)
-                            
-                            # Reprocess without committing
-                            try:
-                                self.process_order(order, retry_count + 1)
-                                self.consumer.commit(msg)
-                                del self.retry_counts[order_id]
-                            except Exception as retry_error:
-                                print(f"⚠️  Retry failed: {retry_error}")
-                                continue
-                        else:
-                            # Max retries exceeded - send to DLQ
-                            print(f"🚫 Max retries exceeded for Order #{order_id}")
-                            self.send_to_dlq(order, str(e))
+                    # Retry loop for this specific message - LOCAL RETRY LOGIC
+                    sent_to_dlq = False
+                    for attempt in range(config.MAX_RETRIES + 1):
+                        try:
+                            self.process_order(order, attempt)
+                            # Success - commit and exit retry loop
                             self.consumer.commit(msg)
-                            if order_id in self.retry_counts:
-                                del self.retry_counts[order_id]
+                            break
+                        
+                        except Exception as e:
+                            error_msg = str(e)
+                            if attempt == 0:
+                                print(f"⚠️  Processing failed for Order #{order_id}: {error_msg}")
+                            
+                            if attempt < config.MAX_RETRIES:
+                                # Not the last attempt, retry
+                                attempt_num = attempt + 1
+                                print(f"🔄 Retry {attempt_num}/{config.MAX_RETRIES} for Order #{order_id}")
+                                time.sleep(config.RETRY_DELAY_SECONDS)
+                                # Continue to next iteration of retry loop
+                            else:
+                                # Max retries exceeded - send to DLQ
+                                print(f"🚫 Max retries exceeded for Order #{order_id}")
+                                self.send_to_dlq(order, error_msg)
+                                self.consumer.commit(msg)
+                                sent_to_dlq = True
+                                break
                 
                 except Exception as e:
                     print(f"❌ Error deserializing message: {e}")
